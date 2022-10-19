@@ -27,6 +27,7 @@
 !              3 - switch off equivalency analysis
 !              6 - energy sorting only 
 !              9 - no sorting, only check groups
+!              12 - energy and RMSD sorting, no topo check (msreact mode)
 !=========================================================================================!
 !=========================================================================================!
 subroutine newcregen(env,quickset)
@@ -360,6 +361,13 @@ subroutine cregen_prout(env,simpleset,pr1,pr2,pr3,pr4)
         pr4 = .true.
     endif
 
+    if(simpleset == 12)then
+        pr1 = .true.
+        pr2 = .true.
+        pr3 = .true.
+        pr4 = .true.
+    endif
+
     return
 end subroutine cregen_prout
 
@@ -444,6 +452,20 @@ subroutine cregen_director(env,simpleset,checkbroken,sorte,sortRMSD,sortRMSD2, &
         checkez = .false.
         bonusfiles= .false.
         anal = .false.
+    endif  
+
+     if(simpleset == 12)then  !msreact mode JG
+      checkbroken = .false.
+      sorte = .true.
+      sortRMSD = .true.
+      sortRMSD2 = .false.
+      repairord = .false.
+      newfile = .true.
+      conffile = .true.
+      topocheck = .false.
+      checkez = .false.
+      bonusfiles= .false.
+      anal = .false.
     endif    
 
     return
@@ -2923,5 +2945,3 @@ subroutine cregen_pr4(ch,infile,nall,group)
     close(ich)
     return
 end subroutine cregen_pr4
-
-

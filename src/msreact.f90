@@ -27,6 +27,8 @@ subroutine msreact_handler(env,tim)
     use crest_data
     use msmod
     use strucrd
+    use zdata ! from JG
+    use iomod ! from JG
     implicit none
 
     type(systemdata) :: env
@@ -49,8 +51,18 @@ subroutine msreact_handler(env,tim)
     integer,allocatable :: pair(:)
     integer,allocatable :: paths(:,:)
     integer :: k
+    
+
+    !! JC variables
+    integer :: nfrags, i, j
+    real(wp) :: ethr ! energy threshold for sorting out fragments (to high reaction energy)
+    real (wp) :: curr_e ! current energy available has to read in, initially 70eV
+    real(wp),allocatable :: xyz(:,:,:)
+    integer,allocatable  :: at(:), fragi(:) ! atom typ, fragment index
+    character(len=1024) :: fname
 
     call tim%start(1,'MSREACT')
+    
 
     !-- read the input coord and put it into the
     !   iso-list as Gen 0 structure
@@ -60,7 +72,7 @@ subroutine msreact_handler(env,tim)
     call struc%deallocate()
 
     !-- additional input file could be read here
-    !call msinputreader(mso)
+    !call msinputreader(mso) ! 
 
 
     nat = mso%il%mol(1)%nat
@@ -75,9 +87,72 @@ subroutine msreact_handler(env,tim)
 
     !-- do the directory setup and optimizations
     call msreact(mso,mso%il%mol(1),nat,pair,3)
-
-
     deallocate(paths,pair)
+    !do some subsequent sorting steps
+    call rdensembleparam('MSDIR/products.xyz', nat, nfrags)
+    write(*,*)
+    write(*,*)"Number of atoms      = ", nat
+    write(*,*)"Number of Fragments  = ", nfrags
+    ! sort out topologically similar structures   
+    call cosort('MSDIR/products.xyz','MSDIR/fragments.xyz',.false.,.true.)
+   ! call rdensembleparam('MSDIR/fragments.xyz', nat, nfrags)
+    write(*,*)
+    write(*,*)"Number of atoms      = ", nat
+    write(*,*)"Number of Fragments  = ", nfrags
+
+
+    ! sorting step for similar fragments
+    ! set paramater for this 
+    curr_e = 70.0_wp  - mso%e_reac ! current energy is maximum initial energy minus sum of all reaction energies to get to starting fragment
+    env%ewin = curr_e * 23.060547838592_wp
+    ethr = nat * 0.6_wp * 23.060547838592_wp * 2.0_wp
+    if ( ethr < 70.0_wp * 23.060547838592_wp) env%ewin = ethr
+    !230  10 eV should be dependent on size of molecule and remaing energy
+    ! workaround because i dont find where you can renam the input for the cregen routine
+    !CALL SYSTEM('cp MSDIR/fragments.xyz ./crest_rotamers_0.xyz')
+    call move('MSDIR/fragments.xyz','crest_rotamers_0.xyz')
+    ! in this step structures above en%ewin =10eV and duplicates according to energy or RMSD are sorted out
+    env%ethr = 0.5_wp ! structures within 1 kcal are considered equal 1kcal too much
+    env%rthr = 200_wp ! just set ridicously high to only sort out according to energy
+    call newcregen(env,12)
+    !CALL SYSTEM('cp crest_conformers.xyz ./fragments.xyz')
+    call move('crest_conformers.xyz','fragments.xyz')
+    
+    call rdensembleparam('./fragments.xyz', nat, nfrags)
+    write(*,*)
+    write(*,*)"Number of atoms      = ", nat
+    write(*,*)"Number of Fragments  = ", nfrags
+    call rmrf('MSDIR')
+    ! still to sort out: initial structure, some duplicates
+    ! split structures
+    allocate(xyz(3,nat,nfrags))
+    allocate(at(nfrags))
+     call rdensemble('fragments.xyz',nat,nfrags,at,xyz)
+    !call rdensemble('fragments.xyz',nat,nfrags,at,xyz)
+    allocate(fragi(nfrags))
+    do i = 1, nfrags
+    call fragment_structure(nat,at,xyz(:,:,i),3.0_wp,1,0,fragi)
+    do j = 1, nat 
+    if (fragi(j)= 1)
+
+    elif (fragi(j)= 2)
+
+    write(fname,'(a,i1,a,i1)') 'fragment', i,'-', fragi(j)
+     open (newunit=ich,file=fname,status='replace')
+    write (ich,'(2x,i0)') nat
+    write (ich,*)
+    end if
+    do j = 1,nat
+      write (ich,'(1x,a2,1x,3f20.10)') i2e(at(j),'nc'),xyz(1:3,j)
+    end do
+    end do
+    !call wrxyz(fname,mol%nat,mol%at,mol%xyz)
+    call wrxyz(fname,)
+    end do
+   
+
+
+    
 
     call tim%stop(1)
     return
@@ -181,7 +256,7 @@ subroutine isodir(mso,dirname,mol,A,B,D)
 
     fname = trim(dirname)//'/'//'.CHRG'
     open(newunit=ich,file=fname)
-    write(ich,'(i0)') mol%chrg + 1   ! EI +1, DEA -1, CID 0
+    write(ich,'(i0)') mol%chrg + 0   ! EI +1, DEA -1, CID 0, give in crest call 
     close(ich)
 
     fname = trim(dirname)//'/'//'.xc1'
