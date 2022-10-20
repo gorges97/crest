@@ -54,12 +54,10 @@ subroutine msreact_handler(env,tim)
     
 
     !! JC variables
-    integer :: nfrags, i, j
+    integer :: nfrags, i, j, ich ! number of current fragmentpairs
     real(wp) :: ethr ! energy threshold for sorting out fragments (to high reaction energy)
     real (wp) :: curr_e ! current energy available has to read in, initially 70eV
-    real(wp),allocatable :: xyz(:,:,:)
-    integer,allocatable  :: at(:), fragi(:) ! atom typ, fragment index
-    character(len=1024) :: fname
+    
 
     call tim%start(1,'MSREACT')
     
@@ -124,31 +122,10 @@ subroutine msreact_handler(env,tim)
     write(*,*)"Number of Fragments  = ", nfrags
     call rmrf('MSDIR')
     ! still to sort out: initial structure, some duplicates
-    ! split structures
-    allocate(xyz(3,nat,nfrags))
-    allocate(at(nfrags))
-     call rdensemble('fragments.xyz',nat,nfrags,at,xyz)
-    !call rdensemble('fragments.xyz',nat,nfrags,at,xyz)
-    allocate(fragi(nfrags))
-    do i = 1, nfrags
-    call fragment_structure(nat,at,xyz(:,:,i),3.0_wp,1,0,fragi)
-    do j = 1, nat 
-    if (fragi(j)= 1)
 
-    elif (fragi(j)= 2)
-
-    write(fname,'(a,i1,a,i1)') 'fragment', i,'-', fragi(j)
-     open (newunit=ich,file=fname,status='replace')
-    write (ich,'(2x,i0)') nat
-    write (ich,*)
-    end if
-    do j = 1,nat
-      write (ich,'(1x,a2,1x,3f20.10)') i2e(at(j),'nc'),xyz(1:3,j)
-    end do
-    end do
-    !call wrxyz(fname,mol%nat,mol%at,mol%xyz)
-    call wrxyz(fname,)
-    end do
+   ! write fragment directories of fragmentpairs
+   !call splitfile('./fragments.xyz',nfrags,1)
+   call write_fragments('fragments.xyz')
    
 
 

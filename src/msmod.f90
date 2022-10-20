@@ -20,6 +20,7 @@
 module msmod
 
       use iso_fortran_env, wp => real64
+      use strucrd ! from JG
       implicit none
 
       
@@ -303,5 +304,65 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
      endif
      return
   end subroutine fragment_structure
+    subroutine write_fragments(fname)
+      use iso_fortran_env, wp => real64
+      use iomod
+      use strucrd, only: rdensembleparam,rdensemble,wrxyz
+      implicit none
+      character(len=*) :: fname
+      character(len=128),allocatable :: etots(:)
+      character(len=512) :: thispath,tmppath1,tmppath2, fname2, tmppath3
+      real(wp),allocatable :: xyz(:,:,:)
+      integer :: nat,nfrags
+      integer :: nc
+      integer,allocatable :: at(:), fragi(:)
+      integer :: i,r, j, ich, k 
+      integer :: natf(2)
+      logical :: ex
+
+      call rdensembleparam(fname,nat,nfrags)
+      allocate(xyz(3,nat,nfrags),at(nat),fragi(nat),etots(nfrags))
+
+      call rdensemble(fname,nat,nfrags,at,xyz,etots) 
+      call getcwd(tmppath1)
+
+      do i=1,nfrags
+         write(tmppath2,'(a,i0)')"fragmentpair",i
+         r = makedir(trim(tmppath2))
+         call chdir(tmppath2)
+         call wrxyz("pair.xyz",nat,at,xyz(:,:,i),etots(i))
+         call getcwd(tmppath2)
+
+         call fragment_structure(nat,at,xyz(:,:,i),1.5_wp,1,0,fragi) ! had to be adjusted to 1.5 from 3.0 in QCxMS
+         do j = 1, 2 ! currently hardcoded only 2 fragments allowed 
+            
+            natf(j) = count(fragi==j)
+            if (natf(j).ne.0) then
+            write(tmppath3,'(a,i0)')"fragment",j
+            r = makedir(trim(tmppath3))
+            call chdir(tmppath3)
+            !write(fname2,'(a,i1,a,i1,a)') 'fragment', i,'-', j,'.xyz'
+            write(fname2,'(a)') 'fragment.xyz'
+            open (newunit=ich,file=fname2,status='replace')
+            write(ich,*) natf(j)
+            write(ich,*)
+            do k = 1,nat
+                if(fragi(k) == j) then !only write xyz if fragment really exists
+                write(ich,'(a2,5x,3F18.8)')  i2e(at(k)),xyz(1:3,k,i) 
+                end if
+            end do
+            close (ich)
+            end if
+            call chdir(tmppath2)
+         end do
+         call chdir(tmppath1)
+       enddo
+      call chdir(thispath)
+      open (newunit=ich,file='npairs',status='replace')
+      write(ich,'(i3)') nfrags
+      close(ich)
+      return
+
+    end subroutine write_fragments
 
 end module msmod
