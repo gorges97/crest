@@ -506,7 +506,16 @@ module crest_data
       logical :: useqmdff          ! use QMDFF in V2?
       logical :: water = .false.   ! true if water is used as solvent (only QCG)
       logical :: wbotopo =.false.  ! set up topo with WBOs   
-
+      logical :: msnoiso =.false. ! print only dissociated structures in msreact
+      logical :: msiso =.false. ! only print non-dissociated structures in msreact
+      logical :: msmolbar =.false. ! sort out duplicates by molbar
+      logical :: mslargeprint=.false. ! dont remove temporary files
+      logical :: msinchi =.false. ! sort out duplicates by inchi
+      logical :: mstopo =.true. ! sort out duplicates by topo
+      integer :: msnbonds = 3 ! distance of bonds up to nonds are stretched
+      integer :: msshifts = 50 ! number of random shifts applied to whole mol
+      integer :: msshifts2 = 0 ! number of random shifts applied to whole mol
+      integer :: msnfrag = 0 !number of fragments that are printed in msreact mode
     contains
       procedure :: allocate => allocate_metadyn
       procedure :: deallocate => deallocate_metadyn

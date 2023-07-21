@@ -161,25 +161,25 @@ subroutine reactor(env, tim)
     call zequals(i)%geteng
 
     ! some printing to check, that all variables are doing fine
-    !print *, ""
-    !print *, "i = ", i
-    !print *, "Molcount            = ", molcount
-    !! print *, "Molvec              = ", molvec
-    !print *, "Molvecs(i)          = ", molvecs(:, i)
-    !print *, "Number of fragments = ", fragCount
-    !print *, "Atoms per fragment  = ", atomsPerFragCount
+    print *, ""
+    print *, "i = ", i
+    print *, "Molcount            = ", molcount
+     print *, "Molvec              = ", molvec
+    print *, "Molvecs(i)          = ", molvecs(:, i)
+    print *, "Number of fragments = ", fragCount
+    print *, "Atoms per fragment  = ", atomsPerFragCount
 
-    !print *, ""
-    !print *, "<ZQEUAL VARS>"
-    !print *, "Number of groups        = ", zequals(i)%ng
-    !print *, "Grp more than 1 nuclei  = ", zequals(i)%eng
-    !print *, "Group order = ", zequals(i)%ord
-    !print *, "Groups"
-    !do j = 1, fragCount
-    !  print *, "j      = ", j
-    !  print *, "Groups = ", zgrps(j)%mem
-    !  print *, ""
-    !end do
+    print *, ""
+    print *, "<ZQEUAL VARS>"
+    print *, "Number of groups        = ", zequals(i)%ng
+    print *, "Grp more than 1 nuclei  = ", zequals(i)%eng
+    print *, "Group order = ", zequals(i)%ord
+    print *, "Groups"
+    do j = 1, fragCount
+      print *, "j      = ", j
+      print *, "Groups = ", zgrps(j)%mem
+      print *, ""
+    end do
 
     deallocate(atomsPerFragCount)
     deallocate(zgrps)

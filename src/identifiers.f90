@@ -149,6 +149,7 @@ subroutine cosort(iname,oname,wrscoord,verbose)
           do p=1,nonh
              !if(itens(p,r)==itens(p,q))then
              if(itensr(p)==itensl(p))then
+             write(*,*) itensr(p),itensl(p)
                sgc=sgc+1
              else
                exit
@@ -157,6 +158,7 @@ subroutine cosort(iname,oname,wrscoord,verbose)
           if(sgc.eq.nonh)then
              group(q)=gc
              tgc=tgc+1
+             write(*,*) "structure ", q," is equivalent to ", r
           endif
         enddo
         if(tgc.gt.1)then

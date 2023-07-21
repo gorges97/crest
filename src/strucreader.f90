@@ -345,7 +345,7 @@ contains
     close (ich)
 
     if (io < 0) then
-      error stop 'error while reading ensemble file.'
+      error stop '.'
     end if
 
     return

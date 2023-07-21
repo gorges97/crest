@@ -302,7 +302,9 @@ subroutine xcoord2(nat,iz,xyz,rcov,cn,cn_thr,bond)
             rcovj=rcov(iz(iat))
 ! covalent distance in Bohr
             rco=(rcovi+rcovj)*1.0  ! this scaling reduces the size of the clusters
-            rr=rco/r
+           ! rr=rco/(r*1.2_wp) ! this scaling prevents incorrectly detected bonds 
+            rr=rco/(r*1.0_wp)
+            ! between fragment pairs
 ! counting function exponential has a better long-range behavior than MHGs inverse damping
             damp=1.d0/(1.d0+exp(-k1*(rr-1.0d0)))
             bond(iat,i)=damp
@@ -472,6 +474,7 @@ subroutine quicktopo(nat,at,xyz,ntopo,topovec)
     allocate(neighmat(nat,nat), source=.false.)
     cn=0.0d0
     bond=0.0d0
+   ! call xcoord2(nat,at,xyz,rcov,cn,900.0_wp,bond)
     call xcoord2(nat,at,xyz,rcov,cn,900.0_wp,bond)
     call bondtotopo(nat,at,bond,cn,ntopo,topovec,neighmat)
     deallocate(neighmat,cn,bond,rcov)

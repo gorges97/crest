@@ -286,7 +286,12 @@ subroutine parseflags(env,arg,nra)
   env%max_solv = 150
   env%solv_file = ''
   env%solu_file = ''
-  
+!>--- options for msreact
+  env%msiso = .false.  
+  env%msnoiso = .false.
+  env%msmolbar = .false.
+  env%msinchi = .false.
+  env%mstopo = .false.
 
 !=========================================================================================!
 !=========================================================================================!
@@ -1436,6 +1441,30 @@ subroutine parseflags(env,arg,nra)
         env%checkiso = .true.
       case ('-noezcheck','-nocheckez')
         env%checkiso = .false.
+      case('-msnoiso') !> filter out non fragmentated structures in msreact
+        env%msnoiso=.true.
+       case('-msiso') !> filter out fragmentated structures in msreact
+        env%msiso=.true.
+        case('-msnbonds') ! give number of bonds up to which bias potential is added between atoms default 3
+        call readl(arg(i + 1),xx,j)
+        env%msnbonds = xx(1)
+        case('-msshifts') ! give number of times atoms are randomly shifted before optimization
+        call readl(arg(i + 1),xx,j)
+        env%msshifts = xx(1)
+        case('-msshifts2') ! give number of times atoms are randomly shifted before applying the constrained optimization default 0 
+        call readl(arg(i + 1),xx,j)
+        env%msshifts2 = xx(1)
+        case('-msnfrag') ! give number of structures that should be generated
+        call readl(arg(i + 1),xx,j)
+        env%msnfrag = xx(1)
+        case('-msmolbar') !> filter out structures with same inchi in msreact
+        env%msmolbar=.true.
+        case('-msinchi') !> filter out structures with same inchi in msreact
+        env%msinchi=.true.
+        case('-mslargeprint') !> dont remove MSDIR
+        env%mslargeprint=.true.
+        case('-mstopo') !> filter out structures with same inchi in msreact
+        env%mstopo=.true.
 !========================================================================================!
 !-------- PROPERTY CALCULATION related flags
 !========================================================================================!

@@ -29,6 +29,8 @@ subroutine msreact_handler(env,tim)
     use strucrd
     use zdata ! from JG
     use iomod ! from JG
+    use atmasses ! from JG
+    use axis_module ! from JG
     implicit none
 
     type(systemdata) :: env
@@ -55,9 +57,23 @@ subroutine msreact_handler(env,tim)
 
     !! JC variables
     integer :: nfrags, i, j, ich ! number of current fragmentpairs
-    real(wp) :: ethr ! energy threshold for sorting out fragments (to high reaction energy)
+    integer :: frag1, frag2, nstruc, incr, ii 
+    integer :: nshifts, nshifts2
     real (wp) :: curr_e ! current energy available has to read in, initially 70eV
+    real(wp) :: mass
+    real(wp) :: cmass1(3), cmass2(3)
+    real(wp),allocatable :: xyz(:,:,:), cmas(:,:,:), xyz1(:,:), xyz2(:,:),  startxyz(:,:)   ! xyz center of mass vector for fragments
+    real(wp) :: estart
+    real(wp) :: norm
+    real(wp),allocatable :: etots(:)
+    integer,allocatable :: at(:) 
+    integer, allocatable :: at1(:), at2(:)
+    integer, allocatable :: fragi(:)
+    integer ::  nbaseat
+    integer, allocatable :: basicatlist(:)
     
+    character(len=128) :: atmp
+     
 
     call tim%start(1,'MSREACT')
     
@@ -66,12 +82,21 @@ subroutine msreact_handler(env,tim)
     !   iso-list as Gen 0 structure
     call struc%open('coord')
     struc%xyz=struc%xyz*bohr !to Angström, from this point on by convention!
+    
+   
+    ! write mass
+    mass = molweight(struc%nat,struc%at)
+    call wrshort_real("mass",mass)
     call mso%il%append(struc%nat,struc%at,struc%xyz,0.0_wp,env%chrg,0)
+    call wrxyz('tmp.xyz',struc%nat,struc%at,struc%xyz,struc%comment)
+
+
+    call xtbopt2(env,mso%il%mol(1)%chrg,estart)
+    write(*,*) "estart is", estart
     call struc%deallocate()
 
     !-- additional input file could be read here
-    !call msinputreader(mso) ! 
-
+    call msinputreader(mso) ! 
 
     nat = mso%il%mol(1)%nat
     k=nat*(nat+1)/2
@@ -84,61 +109,212 @@ subroutine msreact_handler(env,tim)
     endif
 
     !-- do the directory setup and optimizations
-    call msreact(mso,mso%il%mol(1),nat,pair,3)
+    !call msreact(mso,mso%il%mol(1),nat,pair,3)
+    
+    nshifts = env%msshifts
+    nshifts2 = env%msshifts2
+        !atrractive potential for H-shifts
+      !for H-shifts: xtb -lmo , read lmo.out -> get list of atoms with pi or lone-pair -> H-allowed to shift there
+      ! with distance criterium??
+      call xtblmo2(env)   
+      call readbasicpos(env,nbaseat,basicatlist)
+    
+    call msreact(mso,mso%il%mol(1),nat,pair,env%msnbonds,nshifts,nshifts2,nbaseat,basicatlist,env%gfnver)
     deallocate(paths,pair)
+    
+   
+   
     !do some subsequent sorting steps
     call rdensembleparam('MSDIR/products.xyz', nat, nfrags)
     write(*,*)
     write(*,*)"Number of atoms      = ", nat
     write(*,*)"Number of Fragments  = ", nfrags
-    ! sort out topologically similar structures   
-    call cosort('MSDIR/products.xyz','MSDIR/fragments.xyz',.false.,.true.)
-   ! call rdensembleparam('MSDIR/fragments.xyz', nat, nfrags)
-    write(*,*)
-    write(*,*)"Number of atoms      = ", nat
-    write(*,*)"Number of Fragments  = ", nfrags
 
-
-    ! sorting step for similar fragments
-    ! set paramater for this 
-    curr_e = 70.0_wp  - mso%e_reac ! current energy is maximum initial energy minus sum of all reaction energies to get to starting fragment
-    env%ewin = curr_e * 23.060547838592_wp
-    ethr = nat * 0.6_wp * 23.060547838592_wp * 2.0_wp
-    if ( ethr < 70.0_wp * 23.060547838592_wp) env%ewin = ethr
-    !230  10 eV should be dependent on size of molecule and remaing energy
-    ! workaround because i dont find where you can renam the input for the cregen routine
-    !CALL SYSTEM('cp MSDIR/fragments.xyz ./crest_rotamers_0.xyz')
-    call move('MSDIR/fragments.xyz','crest_rotamers_0.xyz')
-    ! in this step structures above en%ewin =10eV and duplicates according to energy or RMSD are sorted out
-    env%ethr = 0.5_wp ! structures within 1 kcal are considered equal 1kcal too much
-    env%rthr = 200_wp ! just set ridicously high to only sort out according to energy
-    call newcregen(env,12)
-    !CALL SYSTEM('cp crest_conformers.xyz ./fragments.xyz')
-    call move('crest_conformers.xyz','fragments.xyz')
+    ! increase distance between two fragments, this is better for the topology tools(?)
+    ! and for the transition state search (we dont want to much interaction between separated fragments)
+   ! call fragdistance()
     
-    call rdensembleparam('./fragments.xyz', nat, nfrags)
-    write(*,*)
-    write(*,*)"Number of atoms      = ", nat
-    write(*,*)"Number of Fragments  = ", nfrags
-    call rmrf('MSDIR')
-    ! still to sort out: initial structure, some duplicates
+    ! first determine center of mass between fragments 
+    ! then add to second fragment 3 times the distance vector between both center of masses
+     allocate(xyz(3,nat,nfrags),at(nat),etots(nfrags),cmas(3,2,nfrags),fragi(nat))
+    
+    frag1 = 0
+    frag2 = 0
+    call rdensemble('MSDIR/products.xyz',nat,nfrags,at,xyz,etots) 
+    do i = 1, nfrags 
+     call fragment_structure(nat,at,xyz(:,:,i),1.3_wp,1,0,fragi) ! had to be adjusted to 1.3 from 3.0 in QCxMS
+        
+          if (count(fragi==2) .gt. 0) then 
+          do j = 1, nat
+            if (fragi(j)==1) then
+            frag1 = frag1 +1 
+            end if
+            if (fragi(j)==2) then
+            frag2 = frag2 +1 
+            end if
+          end do
+           allocate(at1(frag1),at2(frag2))
+           allocate(xyz1(3,frag1),xyz2(3,frag2))
+           frag1 = 0
+           frag2 = 0
+           do j = 1, nat
+            if (fragi(j)==1) then
+            frag1 = frag1 +1 
+            xyz1(:,frag1)=xyz(:,j,i)
+            at1(frag1)=at(j)
+            end if
+            if (fragi(j)==2) then
+            frag2 = frag2 +1 
+            xyz2(:,frag2)=xyz(:,j,i)
+            at2(frag2)=at(j)
+            end if
+          end do
+          call CMAv(frag1,at1,xyz1,cmass1)
+          call CMAv(frag2,at2,xyz2,cmass2)
+          norm = sqrt( (cmass2(1) - cmass1(1))**2 + (cmass2(2) - cmass1(2))**2 + (cmass2(3) - cmass1(3))**2)
+          do j = 1, nat
+            if (fragi(j)==2) then
+            xyz(:,j,i) = xyz(:,j,i) + (cmass2-cmass1)/norm * 1.0_wp ! increase distance by 1 angstroem in some cases already too much
+            end if
+          end do
+          deallocate(at1,at2,xyz1,xyz2)
+          end if
+    end do
 
-   ! write fragment directories of fragmentpairs
-   !call splitfile('./fragments.xyz',nfrags,1)
-   call write_fragments('fragments.xyz')
+
+      open (newunit=ich,file='MSDIR/products.xyz',status='replace')
+    do i = 1,nfrags
+      call wrxyz(ich,nat,at,xyz(:,:,i),etots(i))
+    end do
+    close (ich)
+    deallocate(xyz,at,etots)
+
+    !include starting structure in cosort, so that if nothing happens with starting structure this one gets sorted out
+    ! here, then delete it later from ensemble
+    !qcxms2 names every infile fragment.xyz
+          
+          call copy('fragment.xyz','tmpproducts.xyz')
+          call copy('MSDIR/products.xyz','products1.xyz')
+          write(*,*)
+          write(*,*) "Generated fragment structures written to <products1.xyz>"
+          call appendto('products1.xyz','tmpproducts.xyz')   
+
+    
+     if (env%mstopo) then    
+     ! checks additionally if fragmentation occured the same
+     call cosort2('tmpproducts.xyz','tmpproducts1.xyz',.false.,.true.)
+     ! sorts out only according to topovec problem c-c bond rotation changes already topovec
+     !call sortouttopo('tmpproducts.xyz','tmpproducts1.xyz')
+     else 
+     call copy('tmpproducts.xyz', 'tmpproducts1.xyz') 
+     end if
+    
+      if(env%msmolbar) then 
+       call sortoutmolbar(env,'tmpproducts1.xyz','tmpproducts2.xyz') 
+       elseif(env%msinchi) then
+      call sortoutinchi('tmpproducts1.xyz','tmpproducts2.xyz')
+     else 
+     call copy('tmpproducts1.xyz','tmpproducts2.xyz') 
+     end if
+    
    
-
-
+    !call remove('tmpfragments.xyz')
+    !call remove('tmpproducts.xyz')
     
+    ! sorting step for similar fragments
 
+    ! maybe do this in QCxMS2
+    ! set paramater for this 
+    ! read in sum of reaction energies (and KER ?)
+   
+    env%ewin = (nat * 0.6_wp  * 3.0_wp -  mso%sumreac)* 23.060547838592_wp 
+   
+    ! workaround because i dont find where you can rename the input for the cregen routine
+ call copy('tmpproducts2.xyz','crest_rotamers_0.xyz')
+    !!call move('MSDIR/fragments.xyz','crest_rotamers_0.xyz')
+    ! in this step structures above en%ewin =10eV and duplicates according to energy or RMSD are sorted out
+     !dont do this 
+     env%ethr = 0.2_wp ! structures within 0.2 kcal are considered equal 1kcal too much
+     !env%rthr = 200_wp ! just set ridicously high to only sort out according to energy
+    
+    call newcregen(env,12)
+    call copy('crest_conformers.xyz','tmpproducts2.xyz')
+
+
+  
+
+    call rdensembleparam('tmpproducts2.xyz', nat, nfrags)
+    allocate(xyz(3,nat,nfrags),at(nat),etots(nfrags))
+    call rdensemble('tmpproducts2.xyz',nat,nfrags,at,xyz,etots) 
+    
+   
+    open (newunit=ich,file='products2.xyz',status='replace')
+    do i = 1,nfrags 
+      if (abs(etots(i) - estart) < 0.00001_wp ) cycle ! remove initial structure not ideal
+      call wrxyz(ich,nat,at,xyz(:,:,i),etots(i))
+    end do
+    close (ich)
+   write(*,*)
+   write(*,*) "Topologically unique structures without initial structure written to file <products2.xyz>" 
+
+   write(*,*)
+   write(*,*) "dissociated structures written to <fragments.xyz>"
+   write(*,*) "isomers written to <isomers.xyz>"
+   
+   call detectfragments(env,'products2.xyz')
+   
+    
+   if ( .not. env%mslargeprint) then
+    call remove('tmpproducts.xyz')
+     call remove('tmpproducts1.xyz')
+      call remove('tmpproducts2.xyz')
+      call remove('products1.xyz')
+      call remove('products2.xyz')
+         call remove('crest_conformers.xyz')
+            call remove('crest_rotamers_0.xyz')
+            call remove('crest_rotamers_1.xyz')
+             call remove('crest_best.xyz')
+              call remove('gfnff_topo')
+   call rmrf('MSDIR')
+   end if
+
+  
+    
+       nstruc = env%msnfrag
+    ! print
+     if (nstruc .ne. 0) then
+     deallocate(xyz,at,etots)
+  call rdensembleparam('products.xyz', nat, nfrags)
+    allocate(xyz(3,nat,nfrags),at(nat),etots(nfrags))
+    call rdensemble('products.xyz',nat,nfrags,at,xyz,etots) 
+   incr = 1
+   if (nstruc .ne. 0) then 
+   incr = nfrags/nstruc
+   if (incr .lt. 1) incr = 1
+   write(*,*) "Printing only ",nstruc," selected structures to products.xyz"
+    open (newunit=ich,file='products.xyz',status='replace')
+    ii = 1
+    do i = 1,nfrags, incr    
+     
+      if (ii .gt. nstruc) exit
+      call wrxyz(ich,nat,at,xyz(:,:,i),etots(i))
+       ii = ii + 1 
+    end do
+    close (ich)
+    end if
+    end if
+
+    call write_fragments(env,'products.xyz')
+     write(*,*)
+    write(*,*) "remaining structures written to <products.xyz>"
     call tim%stop(1)
-    return
+
 end subroutine msreact_handler
 
 !==============================================================!
 ! the main implementation of the msreact algo should go here
 !==============================================================!
-subroutine msreact(mso,mol,nat,pair,nbonds)
+subroutine msreact(mso,mol,nat,pair,nbonds,nshifts,nshifts2,nbaseat,basicatlist,gfnver)
       use iso_fortran_env, wp => real64
       use msmod
       use crest_data, only : bohr
@@ -146,14 +322,14 @@ subroutine msreact(mso,mol,nat,pair,nbonds)
       implicit none
 
       type(msobj) :: mso    !main storage object
-      type(msmol) :: mol    ! xyz etc
+      type(msmol) :: mol, molshift  ! xyz etc
 
       integer :: nat
       integer :: pair(nat*(nat+1)/2)
       !integer :: paths(nat*(nat+1)/2,nat)
-      integer :: nbonds
+      integer :: nbonds, nshifts, nshifts2
       integer :: lin !this is a function
-      integer :: i,j,k
+      integer :: i,j,k, ii
       integer :: p
       integer :: np
       integer :: io
@@ -161,8 +337,11 @@ subroutine msreact(mso,mol,nat,pair,nbonds)
       character(len=:),allocatable :: subdir
       character(len=40) :: pdir
       character(len=512) :: thisdir
+      character(len=20) :: gfnver
       real(wp)             :: constr_dist
       real(wp),allocatable :: rcov(:)
+      integer, intent(in) :: basicatlist(nbaseat)
+      integer :: nbaseat
 
       allocate(rcov(94))
       call setrcov(rcov)
@@ -173,8 +352,14 @@ subroutine msreact(mso,mol,nat,pair,nbonds)
       io = makedir(subdir)
       call chdir(subdir)
 
-
-      !-- get specific pairs
+        !atrractive potential for H-shifts
+      !for H-shifts: xtb -lmo , read lmo.out -> get list of atoms with pi or lone-pair -> H-allowed to shift there
+      ! with distance criterium??
+      write(*,*) "Basic atoms for H-shifts"
+     do i = 1, nbaseat
+      write(*,*) basicatlist(i)
+    end do
+       !-- get specific pairs
       np=0
       do p=1,nbonds    ! bonds in between
 !        write(*,'(1x,a,i0,a)') '1,',p+1,' pairs'
@@ -188,14 +373,67 @@ subroutine msreact(mso,mol,nat,pair,nbonds)
                  constr_dist = mso%cdist*(rcov(mol%at(i))+rcov(mol%at(j)))*bohr + float(p)
 !                write(*,*) mol%at(i),mol%at(j),constr_dist
                  call isodir(mso,trim(pdir),mol,i,j,constr_dist)
+                 ! for  H-shifts attractive potential between H and O or N
+               !  if ((mol%at(i) == 1 .and. (mol%at(j) == 7 .or. mol%at(j) == 8)) & 
+                ! & .or. (mol%at(i) == 7 .or. mol%at(i) == 8) .and. mol%at(j) == 1) then
+                 ! does not really what I want dont understand
+                 ! we dont want to get bonded atoms nearer
+                 ! only if only one of the atoms is a H-atom
+                 ! or take here only O??? .eq. 8 instead of ne 1
+                 ! hydrogen has basic atom nearby ?
+                  if (( mol%at(i) .eq. 1 .and. (findloc(basicatlist,j, 1) .ne. 0) ) .or. &
+               &  ( mol%at(j) .eq. 1 .and. (findloc(basicatlist,i, 1) .ne. 0) )) then
+
+                 if (p .ge. 2) then
+                 np = np+1 
+                  write(*,*) "add attractive potential for pair ", np
+                 write(pdir,'(a,i0)')'Pair_',np
+                 constr_dist = 0.25_wp*(rcov(mol%at(i))+rcov(mol%at(j)))*bohr
+!                write(*,*) mol%at(i),mol%at(j),constr_dist
+                 call isodir(mso,trim(pdir),mol,i,j,constr_dist)
+                 end if
+                end if
               endif    
            enddo
          enddo
       enddo
-             
-      write(*,*) '# of distortions',np
-      call msreact_jobber(np,'Pair_',.false.)
+    
+      ! do additional shifting of atoms and subsequent optimization
+      write(*,*) "Shift atoms ",nshifts," times and reoptimize"
+    
+       do ii = 1, nshifts
+       call shiftatoms(mso,mol,molshift,ii)
+       np = np+1 
+       write(pdir,'(a,i0)')'Pair_',np
+       call isodiropt(mso,trim(pdir),molshift)
+      end do
+      ! number of structures explodes here but maybe necessary for planar molecules     
 
+ write(*,*) "Shift atoms",nshifts2," times and apply repulsive potential on bonds of distorted structure"
+!nbonds = nbonds - 1
+ do ii = 1, nshifts2
+  call shiftatoms(mso,mol,molshift,ii)
+do p=1,nbonds    ! bonds in between
+!        write(*,'(1x,a,i0,a)') '1,',p+1,' pairs'
+         do i=1,nat
+           do j=i,nat
+              k=lin(i,j)
+              if(p.eq.1.and.pair(k).eq.1.and.(mol%at(i).eq.1.or.mol%at(j).eq.1)) cycle
+              if(pair(k)==p)then
+                 np = np+1 
+                 write(pdir,'(a,i0)')'Pair_',np
+                 constr_dist = mso%cdist*(rcov(mol%at(i))+rcov(mol%at(j)))*bohr + float(p)
+!                write(*,*) mol%at(i),mol%at(j),constr_dist
+                 call isodir(mso,trim(pdir),molshift,i,j,constr_dist)
+                 end if 
+           enddo
+         enddo
+      enddo
+enddo
+
+      
+      write(*,*) '# of distortions',np
+      call msreact_jobber(np,'Pair_',gfnver,.false.)
       call msreact_collect(mol%nat,np,'products.xyz')
       call rename(subdir//'/'//'products.xyz','products.xyz')
       call chdir(thisdir)
@@ -253,7 +491,7 @@ subroutine isodir(mso,dirname,mol,A,B,D)
     write(dumm,'(f16.2)') mso%T
     write(ich,'(1x,a,a)')'temp=',adjustl(trim(dumm))
     write(ich,'(a)') '$opt'
-    write(ich,'(1x,a)') 'maxcycle=5'
+    write(ich,'(1x,a)') 'maxcycle=15'
     write(ich,'(a)') '$write'
     write(ich,'(1x,a)') 'wiberg=true'
     close(ich)
@@ -261,11 +499,65 @@ subroutine isodir(mso,dirname,mol,A,B,D)
     return
 end subroutine isodir
 
+!============================================================!
+! make a dir for a structure without fragments,
+! a controlfile for an optimization after the atom shifting
+! will be written into the directory
+!============================================================!
+subroutine isodiropt(mso,dirname,mol)
+  use iso_fortran_env, only : wp => real64
+  use msmod
+  use iomod
+  use strucrd, only : wrxyz
+  implicit none
+  type(msobj) :: mso
+  character(len=*) :: dirname
+  type(msmol) :: mol
+  integer :: A,B
+  real(wp) :: D
+
+  character(len=:),allocatable :: fname
+  character(len=20) :: dumm
+  integer :: io,ich
+
+  io = makedir(dirname) !create the directory
+  
+  fname = trim(dirname)//'/'//'struc.xyz'
+  open(newunit=ich,file=fname)
+  call wrxyz(ich,mol%nat,mol%at,mol%xyz)
+  close(ich)
+
+  fname = trim(dirname)//'/'//'.CHRG'
+  open(newunit=ich,file=fname)
+  write(ich,'(i0)') mol%chrg + 0   ! EI +1, DEA -1, CID 0, give in crest call 
+  close(ich)
+
+  fname = trim(dirname)//'/'//'.xc1'
+  open(newunit=ich, file=fname)
+  write(ich,'(a)') '$scc'
+  write(dumm,'(f16.2)') mso%T
+  write(ich,'(1x,a,a)')'temp=',adjustl(trim(dumm))
+  close(ich)
+
+  fname = trim(dirname)//'/'//'.xc2'
+  open(newunit=ich, file=fname)
+  write(ich,'(a)') '$scc'
+  write(dumm,'(f16.2)') mso%T
+  write(ich,'(1x,a,a)')'temp=',adjustl(trim(dumm))
+  write(ich,'(a)') '$opt'
+  write(ich,'(1x,a)') 'maxcycle=5'
+  write(ich,'(a)') '$write'
+  write(ich,'(1x,a)') 'wiberg=true'
+  close(ich)
+
+  return
+end subroutine isodiropt
+
 !=====================================================================!
 ! The job construction routine for MSREACT
 ! (will have to be modified later, for now it is for testing)
 !=====================================================================!
-subroutine msreact_jobber(ndirs,base,niceprint)
+subroutine msreact_jobber(ndirs,base,gfnver,niceprint)
      use iso_fortran_env, only : wp => real64
     use msmod
     use iomod
@@ -276,12 +568,13 @@ subroutine msreact_jobber(ndirs,base,niceprint)
 
     character(len=1024) :: jobcall
     character(len=1024) :: jobcall2
+    character(len=20) :: gfnver
 
     jobcall = ''
     jobcall2 = ''
 
-    write(jobcall,'(a)')  'xtb struc.xyz  --opt loose --input .xc1 > split.out 2>/dev/null'
-    write(jobcall2,'(a)') 'xtb xtbopt.xyz --opt crude --input .xc2 > xtb.out 2>/dev/null'
+    write(jobcall,'(a)')  'xtb struc.xyz  --opt loose '//trim(gfnver)//' --input .xc1 > split.out 2>/dev/null'
+    write(jobcall2,'(a)') 'xtb xtbopt.xyz --opt crude '//trim(gfnver)//' --input .xc2 > xtb.out 2>/dev/null'
     jobcall = trim(jobcall)//' ; '//trim(jobcall2)
 
     !-- directories must be numbered consecutively
@@ -397,7 +690,42 @@ subroutine msreact_collect(nat,np,outfile)
        endif    
     enddo
     close(ich)
-
     deallocate(xyz,at)
     return
 end subroutine msreact_collect
+
+!============================================================!
+! shift atoms of input structure randomly
+! to generate more structures
+! for planar molecules important 
+!============================================================!
+subroutine shiftatoms(mso,mol1,mol2,count)
+    use iso_fortran_env, only : wp => real64
+    use msmod
+    use iomod
+    use strucrd, only : wrxyz
+    implicit none
+    type(msobj) :: mso
+    type(msmol) :: mol1, mol2
+    integer :: A,B
+    real(wp) :: D
+    real(wp) :: x, shift
+    character(len=80) :: fname
+    character(len=20) :: dumm
+    integer :: io,ich, i, j, count
+    mol2 = mol1
+    do i = 1, mol1%nat
+      do j = 1, 3
+      call Random_Number(x)
+      ! positive and negative numbers possible
+      x = 2.0_wp*x-1.0_wp  
+      shift = x* 0.5_wp ! in angstroem?
+      mol2%xyz(j,i)=mol1%xyz(j,i) + shift
+      end do
+    end do
+ write(fname,'(a,i0,a)')  'struc',count,'.xyz'
+    open(newunit=ich,file=fname)
+    call wrxyz(ich,mol2%nat,mol2%at,mol2%xyz)
+    close(ich)
+    
+end subroutine shiftatoms

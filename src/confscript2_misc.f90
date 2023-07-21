@@ -65,7 +65,7 @@ subroutine xtbsp(env,xtblevel)
 !---- jobcall
          jobcall = ""
          jobcall = trim(jobcall)//trim(env%ProgName)
-         jobcall = trim(jobcall)//" "//trim(fname)//" --sp"
+         jobcall = trim(jobcall)//" "//trim(xtbflag)
          jobcall = trim(jobcall)//" "//trim(xtbflag) 
          jobcall = trim(jobcall)//" "//trim(env%solv)
          jobcall = trim(jobcall)//pipe

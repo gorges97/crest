@@ -236,6 +236,7 @@ subroutine xtblmo(env)
          call remove('energy')
          call remove('charges')
          call remove('xtbrestart')
+         call remove('basicpos')
 end subroutine xtblmo
 
 !--------------------------------------------------------------------------------------------
