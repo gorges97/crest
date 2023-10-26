@@ -74,7 +74,7 @@ subroutine msreact_handler(env,tim)
     
     character(len=128) :: atmp
      
-
+ 
     call tim%start(1,'MSREACT')
     
 
@@ -103,11 +103,7 @@ subroutine msreact_handler(env,tim)
     allocate(pair(k),paths(k,nat))
     call msreact_topowrap(mso%il%mol(1),pair,paths,'wbo')
 
-    !-- setting the threads for correct parallelization
-    if(env%autothreads)then
-        call ompautoset(env%threads,6,env%omp,env%MAXRUN,0) !set global OMP/MKL variable for xtb jobs
-    endif
-
+   
     !-- do the directory setup and optimizations
     !call msreact(mso,mso%il%mol(1),nat,pair,3)
     
@@ -116,8 +112,13 @@ subroutine msreact_handler(env,tim)
         !atrractive potential for H-shifts
       !for H-shifts: xtb -lmo , read lmo.out -> get list of atoms with pi or lone-pair -> H-allowed to shift there
       ! with distance criterium??
-      call xtblmo2(env)   
+      call xtblmo2(env)   ! warning omp threads are here set to 1
       call readbasicpos(env,nbaseat,basicatlist)
+
+       !-- setting the threads for correct parallelization
+      if(env%autothreads)then
+        call ompautoset(env%threads,6,env%omp,env%MAXRUN,0) !set global OMP/MKL variable for xtb jobs
+      endif
     
     call msreact(mso,mso%il%mol(1),nat,pair,env%msnbonds,nshifts,nshifts2,nbaseat,basicatlist,env%gfnver)
     deallocate(paths,pair)
@@ -181,7 +182,7 @@ subroutine msreact_handler(env,tim)
           end if
     end do
 
-
+      ! wrong etots are written here, changed due to distance !!!!!
       open (newunit=ich,file='MSDIR/products.xyz',status='replace')
     do i = 1,nfrags
       call wrxyz(ich,nat,at,xyz(:,:,i),etots(i))
@@ -194,9 +195,9 @@ subroutine msreact_handler(env,tim)
     !qcxms2 names every infile fragment.xyz
           
           call copy('fragment.xyz','tmpproducts.xyz')
-          call copy('MSDIR/products.xyz','products1.xyz')
-          write(*,*)
-          write(*,*) "Generated fragment structures written to <products1.xyz>"
+       !   call copy('MSDIR/products.xyz','products1.xyz')
+         ! write(*,*)
+        !  write(*,*) "Generated fragment structures written to <products1.xyz>"
           call appendto('products1.xyz','tmpproducts.xyz')   
 
     
@@ -223,12 +224,9 @@ subroutine msreact_handler(env,tim)
     
     ! sorting step for similar fragments
 
-    ! maybe do this in QCxMS2
-    ! set paramater for this 
-    ! read in sum of reaction energies (and KER ?)
-   
-    env%ewin = (nat * 0.6_wp  * 3.0_wp -  mso%sumreac)* 23.060547838592_wp 
-   
+    ! set energy window for sorting out structures
+ 
+   write(*,*) "energy window is", env%ewin
     ! workaround because i dont find where you can rename the input for the cregen routine
  call copy('tmpproducts2.xyz','crest_rotamers_0.xyz')
     !!call move('MSDIR/fragments.xyz','crest_rotamers_0.xyz')
@@ -261,6 +259,7 @@ subroutine msreact_handler(env,tim)
    write(*,*) "dissociated structures written to <fragments.xyz>"
    write(*,*) "isomers written to <isomers.xyz>"
    
+   ! detect number of fragments and write to file
    call detectfragments(env,'products2.xyz')
    
     
@@ -279,7 +278,7 @@ subroutine msreact_handler(env,tim)
    end if
 
   
-    
+    ! print only pre-defined number of structures
        nstruc = env%msnfrag
     ! print
      if (nstruc .ne. 0) then
@@ -304,9 +303,9 @@ subroutine msreact_handler(env,tim)
     end if
     end if
 
+    
     call write_fragments(env,'products.xyz')
-     write(*,*)
-    write(*,*) "remaining structures written to <products.xyz>"
+     
     call tim%stop(1)
 
 end subroutine msreact_handler
@@ -359,6 +358,7 @@ subroutine msreact(mso,mol,nat,pair,nbonds,nshifts,nshifts2,nbaseat,basicatlist,
      do i = 1, nbaseat
       write(*,*) basicatlist(i)
     end do
+   
        !-- get specific pairs
       np=0
       do p=1,nbonds    ! bonds in between
@@ -381,17 +381,54 @@ subroutine msreact(mso,mol,nat,pair,nbonds,nshifts,nshifts2,nbaseat,basicatlist,
                  ! only if only one of the atoms is a H-atom
                  ! or take here only O??? .eq. 8 instead of ne 1
                  ! hydrogen has basic atom nearby ?
-                  if (( mol%at(i) .eq. 1 .and. (findloc(basicatlist,j, 1) .ne. 0) ) .or. &
-               &  ( mol%at(j) .eq. 1 .and. (findloc(basicatlist,i, 1) .ne. 0) )) then
+            !      if (( mol%at(i) .eq. 1 .and. (findloc(basicatlist,j, 1) .ne. 0) ) .or. &
+              ! &  ( mol%at(j) .eq. 1 .and. (findloc(basicatlist,i, 1) .ne. 0) )) then
 
-                 if (p .ge. 2) then
-                 np = np+1 
-                  write(*,*) "add attractive potential for pair ", np
-                 write(pdir,'(a,i0)')'Pair_',np
-                 constr_dist = 0.25_wp*(rcov(mol%at(i))+rcov(mol%at(j)))*bohr
+               !  if (p .ge. 2) then
+                ! np = np+1 
+                 ! write(*,*) "add attractive potential for pair ", np
+                ! write(pdir,'(a,i0)')'Pair_',np
+                 !constr_dist = 0.25_wp*(rcov(mol%at(i))+rcov(mol%at(j)))*bohr
+                 !constr_dist = 0.5_wp*bohr
 !                write(*,*) mol%at(i),mol%at(j),constr_dist
-                 call isodir(mso,trim(pdir),mol,i,j,constr_dist)
-                 end if
+                 !call isodir(mso,trim(pdir),mol,i,j,constr_dist)
+                ! end if
+                !end if
+              endif    
+           enddo
+         enddo
+      enddo
+
+          !-- attractive potential for H-shifts or distance criterion??
+        nbonds = 100 ! TODO fixme rewrite that only distances are scanned regardless of bonds in between
+      do p=1,nbonds    ! bonds in between
+!        write(*,'(1x,a,i0,a)') '1,',p+1,' pairs'
+         do i=1,nat
+           do j=i,nat
+              k=lin(i,j)
+              if(p.eq.1.and.pair(k).eq.1.and.(mol%at(i).eq.1.or.mol%at(j).eq.1)) cycle
+              if(pair(k)==p)then
+               
+                if (( mol%at(i) .eq. 1 .and. (findloc(basicatlist,j, 1) .ne. 0) ) .or. &
+                &  ( mol%at(j) .eq. 1 .and. (findloc(basicatlist,i, 1) .ne. 0) )) then
+                  if (p .ge. 2) then
+                  ! distance criterion 3.0 Angstroem???
+                  ! McLafferty not achieved by this but in two steps made possible with this
+                  ! in next fragmentation
+                  ! a large distance here accounts for the fact that we often do not 
+                 ! have the required conformer present for this rearrangements
+                 ! for complicated molecules 5.0 Angstroem necessary, 4.0 at least
+                 ! for quinalphos 5 for example, make it as parameter???
+                    if (sqrt(sum((mol%xyz(:,i)-mol%xyz(:,j))**2)) .lt. 4.0_wp) then
+                      np = np+1 
+                      write(*,*) "add attractive potential for pair ", np
+                      write(pdir,'(a,i0)')'Pair_',np
+                      !constr_dist = 0.25_wp*(rcov(mol%at(i))+rcov(mol%at(j)))*bohr
+                      constr_dist = 0.5_wp*bohr ! around 0.25 Angstroem
+!                     write(*,*) mol%at(i),mol%at(j),constr_dist
+                      call isodir(mso,trim(pdir),mol,i,j,constr_dist)
+                    end if
+                  end if
                 end if
               endif    
            enddo
@@ -433,6 +470,8 @@ enddo
 
       
       write(*,*) '# of distortions',np
+      !-- do the job construction and execution
+
       call msreact_jobber(np,'Pair_',gfnver,.false.)
       call msreact_collect(mol%nat,np,'products.xyz')
       call rename(subdir//'/'//'products.xyz','products.xyz')
@@ -569,6 +608,7 @@ subroutine msreact_jobber(ndirs,base,gfnver,niceprint)
     character(len=1024) :: jobcall
     character(len=1024) :: jobcall2
     character(len=20) :: gfnver
+  integer :: val
 
     jobcall = ''
     jobcall2 = ''
@@ -578,6 +618,8 @@ subroutine msreact_jobber(ndirs,base,gfnver,niceprint)
     jobcall = trim(jobcall)//' ; '//trim(jobcall2)
 
     !-- directories must be numbered consecutively
+   call ompprint
+   call ompprint_intern
     call opt_OMP_loop(ndirs,base,jobcall,niceprint)
     write(*,*)
     write(*,*) 'done.'
@@ -667,7 +709,7 @@ subroutine msreact_collect(nat,np,outfile)
     character(len=40) :: pdir
     character(len=:),allocatable :: optfile
     character(len=128) :: newcomment
-    integer :: p,p2
+    integer :: p
     logical :: ex
     integer,allocatable :: at(:)
     real(wp),allocatable :: xyz(:,:)
@@ -676,10 +718,10 @@ subroutine msreact_collect(nat,np,outfile)
 
     allocate(at(nat),xyz(3,nat))
     open(newunit=ich,file=outfile)
-    p=0
-    do p2=1,np
-       write(pdir,'(i0,i0,a,i0)')1,p+1,'Pair_',p2
-       write(pdir,'(a,i0)')'Pair_',p2
+ 
+    do p=1,np
+      ! write(pdir,'(i0,i0,a,i0)')1,p+1,'Pair_',p2
+       write(pdir,'(a,i0)')'Pair_',p
        optfile=trim(pdir)//'/'//'xtbopt.xyz'
        inquire(file=optfile,exist=ex)
        if(ex)then

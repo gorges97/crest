@@ -67,9 +67,7 @@ module msmod
 
           
           real(wp) :: wbormsd = 0.5_wp  !wbo rmsd comp. thr.
-          
-          real(wp) :: sumreac = 0.0_wp ! sum of all reaction energies "used" to get to this point
-          
+          real(wp) :: ewin = 500.0_wp ! energy window threshold for fragmentpairs
           real(wp) :: T  = 3000.0_wp !3000.0_wp    ! better for fragment generation
           real(wp) :: fc = 0.05_wp      !start fc
           real(wp) :: cdist = 1.5_wp    !constraing distance scaling factor of rcov
@@ -305,6 +303,8 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
      endif
      return
   end subroutine fragment_structure
+
+  ! for what is this???
    subroutine detectfragments(env,fname)
       use iso_fortran_env, wp => real64
       use iomod
@@ -314,7 +314,7 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
       implicit none
       character(len=*) :: fname
       character(len=128),allocatable :: etots(:)
-      character(len=512) :: thispath,tmppath1,tmppath2, fname2, tmppath3
+      character(len=512) :: thispath,tmppath1,tmppath2, strucname, tmppath3
       real(wp),allocatable :: xyz(:,:,:)
       real(wp) :: mass
       integer :: nat,nfrags, npoly
@@ -332,8 +332,7 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
       call rdensemble(fname,nat,nfrags,at,xyz,etots) 
       call getcwd(tmppath1)
       ii = 0
-      open (newunit=ich1,file='isomers.xyz',status='replace')
-       open (newunit=ich2,file='fragments.xyz',status='replace')
+    
         open (newunit=ich3,file='products.xyz',status='replace')
       do i=1,nfrags
          call fragment_structure(nat,at,xyz(:,:,i),1.3_wp,1,0,fragi) ! had to be adjusted to 1.3 from 3.0 in QCxMS
@@ -358,10 +357,11 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
          call wrxyz(ich3,nat,at,xyz(:,:,i),etots(i))
 
        enddo
+       
       if(env%msnoiso) then
-      write(*,*) "sorted out ", nfrags - ii,"non-dissociated structures and ", npoly," multiple fragmented"
+         write(*,*) "sorted out ", nfrags - ii,"non-dissociated structures and ", npoly," multiple fragmented"
       elseif(env%msiso) then
-      write(*,*) "sorted out ", nfrags - ii,"dissociated structure pairs of which ", npoly," multiple fragmented"
+         write(*,*) "sorted out ", nfrags - ii,"dissociated structure pairs of which ", npoly," multiple fragmented"
       end if
 
     end subroutine detectfragments
@@ -374,32 +374,40 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
       implicit none
       character(len=*) :: fname
       character(len=128),allocatable :: etots(:)
-      character(len=512) :: thispath,tmppath1,tmppath2, fname2, tmppath3
+      character(len=512) :: thispath,tmppath1,tmppath2, strucname, tmppath3
+      character(len=40) :: sumform, sumformula
       real(wp),allocatable :: xyz(:,:,:)
       real(wp) :: mass
       integer :: nat,nfrags, npoly
       integer :: nc
       integer,allocatable :: at(:), fragi(:)
-      integer :: i,r, j, ich, k, ii, ich1, ich2, ich3
+      integer :: i,r, j, ich, k, npairs, ich1, ich2, ich3, ii
+      integer , allocatable :: atf(:,:) ! atomtypes of fragment
       integer :: natf(2)
       type(systemdata) :: env
       logical :: ex
 
+
+     
       npoly = 0
       call rdensembleparam(fname,nat,nfrags)
       allocate(xyz(3,nat,nfrags),at(nat),fragi(nat),etots(nfrags))
-
+      allocate(atf(2,nat)) 
       call rdensemble(fname,nat,nfrags,at,xyz,etots) 
       call getcwd(tmppath1)
-      ii = 0
+      npairs = 0
+       write(*,*) "writing fragments to <products.xyz> and directories:"
+      write(*,*) " directory | number of fragments"
+       write(*,'(a)')'==================================================='
+      write(*,*) "number of fragments: ", nfrags
       open (newunit=ich1,file='isomers.xyz',status='replace')
-       open (newunit=ich2,file='fragments.xyz',status='replace')
+       open (newunit=ich2,file='fragmentpairs.xyz',status='replace')
         open (newunit=ich3,file='products.xyz',status='replace')
       do i=1,nfrags
          call fragment_structure(nat,at,xyz(:,:,i),1.3_wp,1,0,fragi) ! had to be adjusted to 1.3 from 3.0 in QCxMS
          ! do not write structures that were not fragmented, i.e., rearrangements
           if (count(fragi==3) .gt. 0) then 
-        write(*,*) "More than 2 fragments generated -> Pair ", i," is sorted out "
+       ! write(*,*) "More than 2 fragments generated -> Pair ", i," is sorted out "
         npoly = npoly +1
         cycle
          end if
@@ -407,7 +415,7 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
          if (count(fragi==2) .eq. 0) then 
          call wrxyz(ich1,nat,at,xyz(:,:,i),etots(i))
          end if
-         ! and fragments
+         ! and write fragments
          if (count(fragi==2) .ge. 1) then 
          call wrxyz(ich2,nat,at,xyz(:,:,i),etots(i))
          end if
@@ -422,14 +430,25 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
             cycle
             end if 
          end if  
-         ii = ii + 1         
-         write(tmppath2,'(a,i0)')"p",ii
+         npairs = npairs + 1         
+         write(tmppath2,'(a,i0)')"p",npairs
          r = makedir(trim(tmppath2))
+         ! write to output
+         ! check if fragment or isomer
+          ii=count(fragi==2)
+            if (ii.ne.0) then
+               write(*,'(a)') trim(tmppath2)//" 2 "//trim(etots(i))
+               strucname='pair.xyz'
+            else 
+               write(*,'(a)') trim(tmppath2)//" 1 "//trim(etots(i))
+               strucname='isomer.xyz'
+            end if
+        
          call chdir(tmppath2)
-         call wrxyz("pair.xyz",nat,at,xyz(:,:,i),etots(i))
+         call wrxyz(trim(strucname),nat,at,xyz(:,:,i),etots(i))
          call wrxyz(ich3,nat,at,xyz(:,:,i),etots(i))
          call chdir("..")
-         if (.not. env%msiso) then
+         if (.not. env%msiso .and. ii .ne. 0) then
          do j = 1, 2 ! currently hardcoded only 2 fragments allowed 
             
             natf(j) = count(fragi==j)
@@ -438,21 +457,25 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
             r = makedir(trim(tmppath3))
             call chdir(tmppath3)
             !
-            !write(fname2,'(a,i1,a,i1,a)') 'fragment', i,'-', j,'.xyz'
-            write(fname2,'(a)') 'fragment.xyz'
-            open (newunit=ich,file=fname2,status='replace')
+            !write(strucname,'(a,i1,a,i1,a)') 'fragment', i,'-', j,'.xyz'
+            strucname='fragment.xyz'
+            open (newunit=ich,file=strucname,status='replace')
             write(ich,*) natf(j)
             write(ich,*)
             mass = 0
+            atf(j,:) = 0
             do k = 1,nat
                 if(fragi(k) == j) then !only write xyz if fragment really exists
-                write(ich,'(a2,5x,3F18.8)')  i2e(at(k)),xyz(1:3,k,i) 
-                mass = mass + ams(at(k))
+                  write(ich,'(a2,5x,3F18.8)')  i2e(at(k)),xyz(1:3,k,i) 
+                  mass = mass + ams(at(k))
+                  atf(j,k) = at(k)
                 end if
             end do
             close (ich)
+             sumformula = sumform(nat,atf(j,:))
                   ! write also atomic mass here
              call wrshort_real("mass",mass)      
+              write(*,'(a,i0,2x,a,2x,f9.5)') trim(tmppath2)//"f",j,trim(sumformula),mass
              ! write info if fragment is isomer
          !    if (count(fragi==2) .eq. 0)   call touch("isomer")  
             end if
@@ -462,13 +485,14 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
          call chdir(tmppath1)
        enddo
       call chdir(thispath)
-      call wrshort_int('npairs',ii)
+      call wrshort_int('npairs',npairs)
       if(env%msnoiso) then
-     ! write(*,*) "sorted out ", nfrags - ii,"non-dissociated structures and ", npoly," multiple fragmented"
+     ! write(*,*) "sorted out ", nfrags - npairs,"non-dissociated structures and ", npoly," multiple fragmented"
       elseif(env%msiso) then
-     ! write(*,*) "sorted out ", nfrags - ii,"dissociated structure pairs of which ", npoly," multiple fragmented"
+     ! write(*,*) "sorted out ", nfrags - npairs,"dissociated structure pairs of which ", npoly," multiple fragmented"
       end if
-
+      write(*,'(a)')'==================================================='
+     write(*,*)
     end subroutine write_fragments
     ! sort out duplicates according to inchi with obabel
     ! not really necessary because even for LSD only 5 duplicates removed by this
@@ -688,13 +712,15 @@ subroutine fragment_structure(nat,oz,xyz,rcut,at1,at2,frag)
    end do
    end subroutine sortoutmolbar
 
+   ! TODO Modify this to read more advanced input
+   ! maybe with toml
    subroutine msinputreader(mso)
     type(msobj) :: mso 
 
     logical :: ex
      inquire(file="sumreac",exist=ex)
      if (ex) then
-     call rdshort_real('sumreac',mso%sumreac)
+     call rdshort_real('sumreac',mso%ewin)
      end if
    end subroutine msinputreader
 
@@ -987,16 +1013,18 @@ subroutine readbasicpos(env, nbaseat, basicatlist)
          do
             read(ich,'(a)',iostat=io) tmp
             if (index(tmp,'files:') .ne. 0) exit
-            if (index(tmp,'pi  ') .ne. 0)  nbaseat = nbaseat + 2 ! count both atoms of pi bond
+            if (index(tmp,'pi ') .ne. 0)  nbaseat = nbaseat + 2 ! count both atoms of pi bond delpi is also counted as pi
             if (index(tmp,'LP ') .ne. 0)  nbaseat = nbaseat + 1 ! count LP
          end do
          allocate(dumlist(nbaseat))
+         dumlist = 0
          j = 0
          rewind(ich)
            do
                 read(ich,'(a)',iostat=io) tmp
+                if (index(tmp,'starting deloc pi') .ne. 0) exit
                 if (index(tmp,'files:') .ne. 0) exit
-                if (index(tmp,'pi  ') .ne. 0)  then 
+                if (index(tmp,'pi ') .ne. 0)  then 
                   backspace(ich)
                   read(ich,*) dumr, type, dumr, dumr,  dumr, dumr, dumr, at1, dumc, dumc , dumr, at2, dumc, dumc, dumr
                   if(findloc(dumlist, at1,1) .eq. 0) then 
@@ -1020,6 +1048,6 @@ subroutine readbasicpos(env, nbaseat, basicatlist)
          close(ich)
       basicatlist = pack(dumlist, dumlist .ne. 0) ! sort out zeroes
       nbaseat=size(basicatlist)
-      call remove('lmo.out')
+     ! call remove('lmo.out')
 end subroutine readbasicpos
 end module msmod

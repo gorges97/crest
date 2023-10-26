@@ -216,9 +216,14 @@ subroutine opt_OMP_loop(TMPCONF,base,jobcall,niceprint)
       endif
       k=0        ! count finished jobs
 
+
+  call ompprint
+  call ompprint_intern
+
 !$omp parallel &
 !$omp shared( vz,jobcall,bdir,TMPCONF,percent,k,niceprint,bar,maxpop )
 !$omp single
+
       do i=1,TMPCONF
          vz=i
       !$omp task firstprivate( vz ) private( tmppath,io )
