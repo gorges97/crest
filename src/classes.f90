@@ -510,11 +510,13 @@ module crest_data
       logical :: msiso =.false. ! only print non-dissociated structures in msreact
       logical :: msmolbar =.false. ! sort out duplicates by molbar
       logical :: mslargeprint=.false. ! dont remove temporary files
+      logical :: msattrh=.false. ! add attractive potential for H-atoms
       logical :: msinchi =.false. ! sort out duplicates by inchi
       logical :: mstopo =.true. ! sort out duplicates by topo
+      logical :: msstopo =.true. ! sort out duplicates only by simple topo
       integer :: msnbonds = 3 ! distance of bonds up to nonds are stretched
-      integer :: msshifts = 50 ! number of random shifts applied to whole mol
-      integer :: msshifts2 = 0 ! number of random shifts applied to whole mol
+      integer :: msnshifts = 0 ! number of random shifts applied to whole mol
+      integer :: msnshifts2 = 0 ! number of random shifts applied to whole mol
       integer :: msnfrag = 0 !number of fragments that are printed in msreact mode
     contains
       procedure :: allocate => allocate_metadyn

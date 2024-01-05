@@ -301,8 +301,7 @@ subroutine xcoord2(nat,iz,xyz,rcov,cn,cn_thr,bond)
             if (r2.gt.cn_thr) cycle
             rcovj=rcov(iz(iat))
 ! covalent distance in Bohr
-            rco=(rcovi+rcovj)*1.0  ! this scaling reduces the size of the clusters
-           ! rr=rco/(r*1.2_wp) ! this scaling prevents incorrectly detected bonds 
+            rco=(rcovi+rcovj)
             rr=rco/(r*1.0_wp)
             ! between fragment pairs
 ! counting function exponential has a better long-range behavior than MHGs inverse damping

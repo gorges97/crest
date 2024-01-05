@@ -287,11 +287,12 @@ subroutine parseflags(env,arg,nra)
   env%solv_file = ''
   env%solu_file = ''
 !>--- options for msreact
-  env%msiso = .false.  
+  env%msiso = .false.  ! msiso and msnoiso are mutually exclusive !!!
   env%msnoiso = .false.
   env%msmolbar = .false.
   env%msinchi = .false.
   env%mstopo = .false.
+  env%msstopo = .false.
 
 !=========================================================================================!
 !=========================================================================================!
@@ -486,6 +487,7 @@ subroutine parseflags(env,arg,nra)
         env%crestver = crest_msreac
         env%preopt = .false.
         env%presp = .true.
+        env%ewin = 500.0d0 ! set energy window higher
       case ('-splitfile')
         ctmp = trim(arg(i + 1))
         k = huge(j)
@@ -1448,23 +1450,27 @@ subroutine parseflags(env,arg,nra)
         case('-msnbonds') ! give number of bonds up to which bias potential is added between atoms default 3
         call readl(arg(i + 1),xx,j)
         env%msnbonds = xx(1)
-        case('-msshifts') ! give number of times atoms are randomly shifted before optimization
+        case('-msnshifts') ! give number of times atoms are randomly shifted before optimization
         call readl(arg(i + 1),xx,j)
-        env%msshifts = xx(1)
-        case('-msshifts2') ! give number of times atoms are randomly shifted before applying the constrained optimization default 0 
+        env%msnshifts = xx(1)
+        case('-msnshifts2') ! give number of times atoms are randomly shifted before applying the constrained optimization default 0 
         call readl(arg(i + 1),xx,j)
-        env%msshifts2 = xx(1)
+        env%msnshifts2 = xx(1)
         case('-msnfrag') ! give number of structures that should be generated
         call readl(arg(i + 1),xx,j)
         env%msnfrag = xx(1)
         case('-msmolbar') !> filter out structures with same inchi in msreact
         env%msmolbar=.true.
-        case('-msinchi') !> filter out structures with same inchi in msreact
+        case('-msinchi') !> filter out structures with same inchi Code in msreact
         env%msinchi=.true.
+        case('-mstopo') !> filter out structures with same topology in msreact
+        env%mstopo=.true.
+        case('-msstopo') !> filter out structures with same simple topology in msreact
+        env%msstopo=.true.
+        case('-msattrh') !> add attractive potential for H-atoms
+        env%msattrh=.true.
         case('-mslargeprint') !> dont remove MSDIR
         env%mslargeprint=.true.
-        case('-mstopo') !> filter out structures with same inchi in msreact
-        env%mstopo=.true.
 !========================================================================================!
 !-------- PROPERTY CALCULATION related flags
 !========================================================================================!

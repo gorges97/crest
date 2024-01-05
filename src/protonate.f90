@@ -201,7 +201,7 @@ end subroutine protonate
 !--------------------------------------------------------------------------------------------
 ! A quick single point xtb calculation and calculate LMOs
 !--------------------------------------------------------------------------------------------
-subroutine xtblmo(env)
+subroutine xtblmo(env,print)
          use iso_fortran_env, only : wp => real64
          use iomod
          use crest_data
@@ -210,7 +210,8 @@ subroutine xtblmo(env)
          character(len=80) :: fname
          character(len=512) :: jobcall
          integer :: io
-         character(len=*),parameter :: pipe = ' > xtb.out 2>/dev/null'
+         character(len=*),parameter :: pipe = ' > lmo.out 2>/dev/null'
+         logical, optional :: print
 
 !---- setting threads
          if(env%autothreads)then
@@ -232,7 +233,9 @@ subroutine xtblmo(env)
 
 !---- cleanup
          call remove(fname)
-         call remove('xtb.out')
+         if (.not. print) then 
+            call remove('lmo.out')
+         end if
          call remove('energy')
          call remove('charges')
          call remove('xtbrestart')

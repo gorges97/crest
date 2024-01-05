@@ -365,7 +365,7 @@ subroutine cregen_prout(env,simpleset,pr1,pr2,pr3,pr4)
         pr1 = .true.
         pr2 = .true.
         pr3 = .true.
-        pr4 = .true.
+        pr4 = .false.
     endif
 
     return
@@ -454,7 +454,7 @@ subroutine cregen_director(env,simpleset,checkbroken,sorte,sortRMSD,sortRMSD2, &
         anal = .false.
     endif  
 
-     if(simpleset == 12)then  !msreact mode JG
+     if(simpleset == 12)then  !msreact mode 
       checkbroken = .false.
       sorte = .true.
       sortRMSD = .true.
@@ -466,6 +466,7 @@ subroutine cregen_director(env,simpleset,checkbroken,sorte,sortRMSD,sortRMSD2, &
       checkez = .false.
       bonusfiles= .false.
       anal = .false.
+
     endif    
 
     return

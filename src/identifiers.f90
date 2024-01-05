@@ -149,7 +149,6 @@ subroutine cosort(iname,oname,wrscoord,verbose)
           do p=1,nonh
              !if(itens(p,r)==itens(p,q))then
              if(itensr(p)==itensl(p))then
-             write(*,*) itensr(p),itensl(p)
                sgc=sgc+1
              else
                exit

@@ -173,7 +173,6 @@ subroutine ompautoset(threads,mode,omp,maxrun,factor)
         case( 6 ) !case 2 combined with case 4, for OMP parallel task loop ---> each individual xTB job has only 1 thread, confscript has maximum number of threads to manage task list
           call ompset_min(omp,maxrun)
           call OMP_Set_Num_Threads(maxrun)
-          write(*,*) "maxrun is", maxrun
 #ifdef WITH_MKL
           call MKL_Set_Num_Threads(maxrun)
 #endif
